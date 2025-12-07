@@ -2,8 +2,7 @@ from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
-
+socketio = SocketIO(app, logger=True, engineio_logger=True)
 connected_users = {}
 
 
@@ -21,25 +20,24 @@ def chat():
 
 @socketio.on("chat message")
 def handle_chat(json):
-    emit("chat message", json, broadcast=True, to=json["room"])
+    emit("chat message", json, broadcast=True, include_self=False, to=json["room"])
 
 
 @socketio.on("writing")
 def handle_writing(json):
-    emit("writing", json, broadcast=True, to=json["room"])
+    emit(
+        "writing",
+        json,
+        broadcast=True,
+        include_self=False,
+        to=json["room"],
+    )
 
 
 @socketio.on("connect")
 def on_connect(auth):
-    if not auth:
-        return
-
-    username = auth.get("username")
-    room = auth.get("room")
-
-    if not username or not room:
-        return
-
+    room = auth["room"]
+    username = auth["username"]
     connected_users[request.sid] = (username, room)
     join_room(room)
     emit("connected users", connected_users, broadcast=True, to=room)
@@ -47,13 +45,11 @@ def on_connect(auth):
 
 @socketio.on("disconnect")
 def on_disconnect():
-    user = connected_users.get(request.sid)
-    if user:
-        room = user[1]
-        leave_room(room)
-        del connected_users[request.sid]
-        emit("connected users", connected_users, broadcast=True, to=room)
+    room = connected_users[request.sid][1]
+    leave_room(room)
+    del connected_users[request.sid]
+    emit("connected users", connected_users, broadcast=True, to=room)
 
 
 if __name__ == "__main__":
-    socketio.run(app)
+    socketio.run(app, debug=True, use_reloader=True)
